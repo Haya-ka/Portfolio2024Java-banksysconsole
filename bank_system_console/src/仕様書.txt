@@ -1,0 +1,187 @@
+プログラムの仕様書
+要件定義
+（どういう動きをするか）
+基本設計書（外部設計書）
+詳細設計書（内部設計書）
+
+テーブルの定義書
+
+---　ファイル構成
+
+User.java			:ユーザー情報を保存
+Account.java		:口座情報を保存
+Transaction.java	:入出送金のログを保存
+
+AuthDAO.java		:ログイン等ユーザ処理
+AccountDAO.java		:口座情報の操作
+TransactionDAO.java	:入出送金のログを保存
+SystemlogDAO.java	:システムログを保存
+
+DatabaseContainer	:データベースへの接続設定
+PasswordHasher.java	:パスワードをハッシュ化
+SessionManager.java	:現在の接続先を保存
+
+Main.java			:メインクラス（エントリーポイント）
+Menu.java			:メニュークラス
+
+---　データベース設計
+
+【users】
+id			:SERIAL PK (accounts user_id)
+	お客様コード（一意）
+name		:STRING
+	名前
+email		:STRING
+	メールアドレス
+password	:STRING
+	パスワード（ハッシュ済）
+
+【accounts】
+id			:SERIAL PK
+	口座番号（一意）
+user_id		:INT REFERENCE (users id)
+	お客様コード（連動）
+balance		:NUMERIC(12,2)
+	残高
+create_at	:TIMESTAMP DEFAULT CURRENT TIMESTAMP
+	開設日
+
+【transactions】
+id			:SERIAL PK
+	行数（一意）
+account_id	:INT REFERENCE (accounts id)
+	口座番号（連動）
+amount		:NUMERIC(12,2)
+	金額
+transaction_type	:STRING ("deposit","withdraw","open", "close", "transfer","receive")
+	処理内容
+timestamp			:TIMESTAMP DEFAULT CURRENT TIMESTAMP
+	処理時刻
+
+【logs】
+id			:SERIAL PK
+	行数（一意）
+user_id		:INT
+	お客様コード
+action		:VARCHAR(50)
+	処理内容
+timestamp	:TIMESTAMP
+	処理時刻
+
+--　SQL文
+
+CREATE DATABASE bank_system;
+
+--テーブル中身の削除
+
+DELETE FROM logs;
+ALTER SEQUENCE logs_id_seq RESTART WITH 1;
+DELETE FROM transactions;
+ALTER SEQUENCE transactions_id_seq RESTART WITH 1;
+DELETE FROM accounts;
+ALTER SEQUENCE accounts_id_seq RESTART WITH 1;
+DELETE FROM users;
+ALTER SEQUENCE users_id_seq RESTART WITH 1;
+
+--テーブルの確認
+
+SELECT * FROM logs;
+SELECT * FROM transactions;
+SELECT * FROM accounts;
+SELECT * FROM users;
+
+tester@sample.jp
+1234
+monitor@sample.jp
+1234
+
+INSERT INTO accounts (user_id, balance) VALUES (2, 1000);
+
+--テーブルの廃棄
+
+DROP TABLE logs;
+DROP TABLE transactions;
+DROP TABLE accounts;
+DROP TABLE users;
+
+--テーブル作成：users
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE,
+    password VARCHAR(100) NOT NULL
+);
+
+--テーブル作成：accounts
+
+CREATE TABLE accounts (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    balance NUMERIC(12,2) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--テーブル作成：transactions
+
+CREATE TABLE transactions (
+    id SERIAL PRIMARY KEY,
+    account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+    target_account_id INTEGER,
+    amount NUMERIC(12,2) NOT NULL,
+    transaction_type TEXT CHECK (transaction_type IN ('deposit', 'withdraw', 'open', 'transfer', 'receive')),
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--テーブル作成：logs
+
+CREATE TABLE logs (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id),
+    action VARCHAR(50),
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--テーブル作成：admins
+
+CREATE TABLE admins (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(100) UNIQUE,
+    password VARCHAR(100) NOT NULL
+);
+
+INSERT INTO admins(email, password)
+VALUES('master@sample.jp', '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4');
+
+--出金
+
+③ 出金時のエラーチェック（残高不足を防ぐ）
+口座の残高が足りない場合、出金を防ぐSQLにします。
+
+DO $$ 
+BEGIN
+    IF (SELECT balance FROM accounts WHERE id = 1) >= 10000 THEN
+        UPDATE accounts
+        SET balance = balance - 10000
+        WHERE id = 1;
+
+        INSERT INTO transactions (account_id, amount, transaction_type)
+        VALUES (1, -10000, 'withdrawal');
+    ELSE
+        RAISE EXCEPTION '残高不足です';
+    END IF;
+END $$;
+
+--テーブルの統合：accountsとusers
+
+SELECT u.id user_id, u.name, a.id account_id, a.balance 
+FROM users u
+JOIN accounts a ON u.id = a.user_id
+WHERE u.id = 1;
+
+
+
+1、入金、出金、送金時に完了通知が出ない→出したい
+2、お客様はお金の情報を求めているはず→RSSでニュースを取得しhomeに掲載
+3、マイナス入力に対応していない（想定外に受け付けてしまう）
+4、
